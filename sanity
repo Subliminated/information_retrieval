@@ -1,0 +1,72 @@
+#!/usr/local/bin/bash
+
+if [ -f index.py ] ; then
+
+    rm -f *.out
+    rm -rf ./idx
+    echo "Indexing starts...it may take up to 60 secs"
+    timeout 60 python3 index.py ~cs6714/Public/data ./idx > index.out
+else
+    echo "Error: Your current directory does not contain index.py"
+fi
+
+if [ -f search.py ] ; then
+
+    echo "10 search queries start..."
+    echo "Query 1-7 uses F-Measure; Query 8-10 is either correct or wrong."
+    echo ""
+    # separate two loops in case each search produces heaps of error messages
+    for ((k=1;k<11;++k))
+    do
+        timeout 10 python3 search.py ./idx < ~cs6714/Public/test/query$k.txt > test$k.out
+    done
+    for ((k=1;k<8;++k))
+    do
+        touch test$k.out
+
+    recallWrong=`diff ~cs6714/Public/test/answer$k.txt test$k.out | grep "^<" | wc -l`
+    precWrong=`diff ~cs6714/Public/test/answer$k.txt test$k.out | grep "^>" | wc -l`
+    ansSize=`cat ~cs6714/Public/test/answer$k.txt | wc -l`
+    testSize=`cat test$k.out | wc -l`
+    recallCount=$(( $ansSize - $recallWrong ))
+    precCount=$(( $testSize - $precWrong ))
+    recall=`bc <<< "scale=10; $recallCount / $ansSize" | awk '{printf "%.2f", $0}'`
+    if [[ $precCount -le 0 ]]
+    then
+        prec="0.00"
+	fmeasure="0.00"
+    else
+        prec=`bc <<< "scale=10; $precCount / $testSize" | awk '{printf "%.2f", $0}'`
+        fmeasure=`bc <<< "scale=10; 2*$prec*$recall/($prec+$recall)" | awk '{printf "%.2f", $0}'`
+    fi
+    echo -ne "query$k - Recall: "
+    echo -ne $recall
+    echo -ne " Precision: "
+    echo -ne $prec
+    echo -ne " Fmeasure: "
+    echo $fmeasure
+
+	
+    done
+    for ((k=8;k<11;++k))
+    do
+      	touch test$k.out
+	correct=`eval diff -q ~cs6714/Public/test/answer$k.txt test$k.out`
+	if [ -z "$correct" ]; then
+            echo "query$k - Correct"
+	else
+            echo "query$k - Wrong"
+	fi
+    done
+
+    echo ""
+    echo "You can find the corresponding queries and expected results at:"
+    echo "cd ~cs6714/Public/test"
+    echo "and the test dataset at:"
+    echo "cd ~cs6714/Public/data"
+    echo "Post your question in the Discourse forum if you have any"
+    rm -rf ./idx
+else
+    echo "Error: Your current directory does not contain search.py"
+fi
+
