@@ -4,6 +4,8 @@ import re
 import sys
 import shutil
 import json
+from collections import defaultdict
+
 
 from nltk import word_tokenize, pos_tag
 from nltk.stem import WordNetLemmatizer
@@ -11,24 +13,21 @@ from nltk.corpus import wordnet
 
 lemmatizer = WordNetLemmatizer()
 
-document_path = os.getcwd() + '/data'
-index_path = os.getcwd() + '/doc_index'
-
-print("docp",document_path)
-print("indexp",index_path)
-
 #%%
 # Temporary import for inverted index
-inverted_index_path = "/Users/gordonlam/Documents/GitHub/COMP6741/Project/doc_index/inverted_index.json"
+inverted_index_path = "/Users/gordonlam/Documents/GitHub/COMP6741/Project/doc_index/inverted_index2.json"
 with open(inverted_index_path, 'r', encoding='utf-8') as f:
     inverted_index = json.load(f)
+###################################### Load functions ######################################
 
-#print(inverted_index.keys())  # Print keys to verify loading
-#%%
+def load_index(index_folder, name_of_index_file):
+    # Example: load a single index file (adjust as needed)
+    index_file = os.path.join(index_folder, name_of_index_file)
+    with open(index_file, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-#TEST
-#print([x[1] for x in inverted_index["totally"]["postings"]])
-#print([x[1] for x in inverted_index["surprise"]["postings"]])
+
+###################################### Preprocessing functions ######################################
 
 #%%
 def handle_abbreviations(text):
@@ -116,80 +115,11 @@ def preprocess_and_tokenize(text):
     text = handle_normalize(text)    # Handle singular/plural, tense, and possessive forms through stemming/lemmatization and normalisation
     text = normalize_numeric_tokens(text)    # Handle numeric tokens, commas in tokens, and decimal places
     tokens = re.findall(r'\b[\w-]+\b', text) #Find tokens, any hyphenated terms are kept as is
-    return tokens
+    return tokens #list[str]
 
+preprocess_and_tokenize("bank expect distribution")
+###################################### Search Algorithms Preprocess ######################################
 
-#%%
-###################################### Document Matching ######################################
-def posting_intersection_algorithm(term1_posting, term2_posting):
-    """
-    How it works...
-    1) look for the terms one at a time from the first posting list...
-        - For each term, check which document 
-        - If not match, then pop off index and move to next comparison
-    2) Implement a skip pointer mechanism that allows the pointer to move ahead and compare the document
-
-    Inputs:
-    - term1_posting -> list[list[int]]
-    - term2_posting -> list[list[int]]
-
-    Outputs:
-    - merged_posting_list
-    """
-    # get list of postings
-    #p1 = [(i,x[0]) if i%int(len(term1_posting)**0.5) == 0 else (None,x[0]) for i,x in enumerate(term1_posting)]
-    #p2 = [(i,x[0]) if i%int(len(term2_posting)**0.5) == 0 else (None,x[0]) for i,x in enumerate(term2_posting)]
-
-    #p1 = [x[0] for x in term1_posting]
-    #p2 = [x[0] for x in term2_posting]
-    
-    # Assume term posting is list[list[int]]
-    pl1 = term1_posting
-    pl2 = term2_posting
-
-    skip_p1 = int(len(pl1)**0.5)
-    skip_p2 = int(len(pl2)**0.5)
-
-    pos1,pos2 = 0,0
-
-    #print(p1)
-    #print(p2)
-    #p1_skip_pointers = [i for i in range(0,len(p1),int(len(p1)**0.5))] 
-    #p2_skip_pointers = [i for i in range(0,len(p2),int(len(p2)**0.5))] 
-    merged_list = []
-    while (pos1 < len(pl1)) and (pos2 < len(pl2)):
-        # Check if the document for term 1 exist for term 2 for the first element
-        if pl1[pos1] == pl2[pos2]:
-            merged_list.append(pl1[pos1])
-            # now we go to the next posting by removing the first term
-            pos1 += 1
-            pos2 += 1
-        # else means no match so we can skip..., implement a skip pointer...
-        else:
-            if pl1[pos1] < pl2[pos2]:
-                #p1 = p1[1:] # No skip logic
-                next_pos1 = pos1 + skip_p1
-                # check the value at position p1 if less than total AND value at P1 is 
-                if next_pos1 < len(pl1) and pl1[next_pos1] <= pl2[pos2]:
-                    # Set the new position to skipped
-                    pos1 = next_pos1
-                    #print(f"POS1 SKIPPING TO {next_pos1}")
-                else:
-                    # Increment by 1 because the document must now be in skip range
-                    pos1 += 1
-            else:
-                #p2 = p2[1:] # No skip logic
-                next_pos2 = pos2 + skip_p2
-                # check the value at position p2 if less than total AND value at P2 is 
-                if next_pos2 < len(pl2) and pl2[next_pos2] <= pl1[pos1]:
-                    # Set the new position to skipped
-                    pos2 = next_pos2
-                    #print(f"POS2 SKIPPING TO {next_pos2}")
-                else:
-                    # Increment by 1 because the document must now be in skip range
-                    pos2 += 1
-    #return sorted(list(set(merged_list)),reverse=False)
-    return merged_list
 #%%
 def posting_union_algorithm(term1_posting, term2_posting):
     """
@@ -202,52 +132,273 @@ def posting_union_algorithm(term1_posting, term2_posting):
     Output:
     - merged_posting_list : list[int] with all unique docIDs from either list, sorted
     """
-
-    pl1 = term1_posting
+    pl1 = term1_posting 
     pl2 = term2_posting
-
     union_list = sorted(set(pl1 + pl2))
     return union_list
-#%%
-# Examples
-term1_posting = [
-    [1, 5], # term appears in doc 1 at positions 5,7,123
-    [1, 7],
-    [1, 123],    
-    [3, 2],       # term appears in doc 3 at position 2
-    [7, 8],
-    [9, 8],
-    [11, 8],
-    [13, 8],
-    [21, 8],
-    [22, 8],
-    [153, 8],
-    [1121, 8],
-        # term appears in doc 7 at positions 8 and 15
-]
 
-term2_posting = [
-    [1, 4],       # term appears in doc 1 at position 4
-    [2, 7],       # term appears in doc 2 at position 7
-    [1121, 3]     # term appears in doc 7 at positions 3 and 9
-]
-
-term1_posting = [1, 3, 7, 9, 11, 13, 21, 22, 153, 1121]
-term2_posting = [1, 2, 1121]
-#print([x[0] for x in term1_posting])
-#print([x[0] for x in term2_posting])
-
-posting_intersection_algorithm(term1_posting, term2_posting)
-posting_union_algorithm(term1_posting, term2_posting)
-#%%
-a = [x[0] for x in inverted_index["five"]["postings"]]
-#%%
-b = [x[0] for x in inverted_index["day"]["postings"]]
+#term1_posting = [1, 3, 7, 9, 11, 13, 21, 22, 153, 1121]
+#term2_posting = [1, 2, 1121]
 
 #%%
-posting_intersection_algorithm(a,b)
+#extract unique documents
+def get_unique_document_list(inverted_index):
+    doc_set = set()
+    for k,_ in inverted_index.items():
+        doc_set = doc_set.union(x[0] for x in inverted_index[k]["postings"])
+    ordered_doc_list = sorted(list(doc_set),reverse=False)
+    return ordered_doc_list
+
+#get_unique_document_list(inverted_index)
+
+###################################### Truncate Index Preprocess ######################################
+
 #%%
-def match_documents(query, inverted_index):
+def truncate_index(query_terms,inverted_index):
+    return {key:inverted_index[key] for key in query_terms if key in inverted_index.keys()}
+#sample_query_terms = ['june','july']
+#sample_index = truncate_index(sample_query_terms,inverted_index)
+#print(sample_index)
+#%%
+
+###################################### Reversed Index Preprocess ######################################
+
+def reverse_index(inverted_index):
+    """
+    This function reverse an inverted index to fulfill the needs of ranked retrieval
+
+    Input:
+    - inverted_index -> dict[dict[list[list]]: inverted index of the form {'june': {4988: [[40, 21, 7],....
+    
+    Output:
+    - reversed_index: dict[dict[]]
+    """
+    reversed_index = {}
+    for term, value in inverted_index.items():
+        for docid, postings in value.items():
+            # Skip non-list values (e.g., 'df' or other metadata)
+            if not isinstance(postings, list):
+                continue
+            if docid not in reversed_index:
+                reversed_index[docid] = {"terms":{}}
+            if term not in reversed_index[docid]["terms"]:
+                reversed_index[docid]["terms"][term] = []
+            for term_tuple in postings:
+                reversed_index[docid]["terms"][term].append(term_tuple)
+
+    # Add scores
+    for docid,value in reversed_index.items():
+        reversed_index[docid]["scores"] = [0,0,0,0]
+    return reversed_index
+
+sample_index = {
+    'june': {
+        '1001': [[3, 1, 1], [15, 2, 2]],
+        '1002': [[7, 1, 1], [22, 3, 3], [35, 4, 4]],
+        '1003': [[5, 2, 1]],
+    },
+    'july': {
+        '1001': [[8, 1, 1], [30, 3, 2]],
+        '1002': [[12, 2, 2]],
+        '1004': [[2, 1, 1], [18, 2, 2]],
+    },
+    'august': {
+        '1001': [[2, 1, 1]],
+        '1002': [[1, 1, 1], [20, 3, 3]],
+        '1003': [[11, 2, 1], [25, 4, 2]],
+    }
+}
+#Sample inverted
+#sample_index = {'june': {'4988': [[40, 21, 7], [54, 27, 9]], '2881': [[12, 8, 3]], '309': [[35, 17, 6]], '2221': [[11, 18, 1]], '56': [[1, 4, 1]], '3535': [[3, 4, 1], [24, 34, 14], [30, 39, 16], [33, 47, 19], [34, 48, 19]], '4297': [[7, 29, 9]], '227': [[0, 2, 0]], '1388': [[6, 9, 2]], '2390': [[7, 11, 4]], '3023': [[12, 33, 11]], '874': [[4, 8, 2]], '4005': [[3, 13, 4], [7, 28, 9], [9, 29, 10], [16, 38, 13], [17, 45, 16]], '5123': [[4, 18, 6]], '4806': [[2, 1, 0]], '3078': [[3, 14, 3]], '2505': [[2, 8, 3]], '5125': [[1, 13, 4]], '4664': [[1, 9, 3]], '1918': [[17, 15, 7]], '2121': [[6, 10, 2], [15, 29, 8]], '1902': [[18, 31, 13]], '2925': [[0, 7, 1], [1, 11, 3], [4, 15, 4], [9, 25, 8]], '3062': [[6, 12, 3], [12, 24, 8]], '4016': [[3, 6, 1]], '1350': [[2, 5, 1], [5, 14, 4]], '3187': [[2, 10, 2]], '144': [[0, 1, 0], [9, 26, 9]], '1': [[16, 28, 10], [23, 33, 13], [35, 45, 17]], '922': [[7, 12, 5]], '5278': [[11, 21, 8]], '5203': [[0, 4, 2]], '903': [[2, 8, 5]], '1634': [[5, 14, 7]], '4714': [[0, 9, 3]], '4233': [[1, 4, 0], [8, 24, 9]], '4267': [[1, 22, 7], [2, 33, 10]], '1575': [[5, 11, 4]], '1312': [[11, 69, 25]], '5779': [[1, 7, 2]], '3278': [[5, 17, 6]], '4098': [[2, 4, 2]], '3068': [[2, 10, 3]], '2718': [[3, 5, 0], [3, 14, 5]], '4689': [[1, 15, 4]], '3493': [[4, 26, 10]], '5167': [[5, 16, 4]], '4425': [[23, 26, 10]], '5765': [[9, 36, 12]], '5273': [[0, 16, 4]], '327': [[15, 16, 5]], '4156': [[1, 7, 1], [7, 39, 11]], '4939': [[0, 10, 2]], '374': [[3, 5, 1]], '5412': [[2, 4, 1]], '3344': [[0, 2, 0], [0, 4, 1]], '5281': [[0, 18, 6]], '2456': [[5, 17, 4]], 'df': 58}}
+#sample_ri = reverse_index(sample_index)
+#print(sample_ri)
+#%%
+###################################### Term Coverege Score  ######################################
+
+def calculate_coverage(query_terms,reversed_index):
+    """
+    Metric: = number of terms covered, easy...
+
+    Inputs:
+    - query_term -> list[str]
+    - reversed_index -> dict[dict[list[list]]]
+    """
+    total_query_terms = len(query_terms)
+    # Go through each document and score
+    for docid,value in reversed_index.items():
+        #value is a dictionary
+        #count_keys = len(value["terms"].keys())
+        score = 0
+        for term in query_terms:
+            if term in value["terms"].keys():
+                score+=1
+        #Update scores
+        reversed_index[docid]["scores"][0] = score/total_query_terms#count_keys/total_query_terms
+    return reversed_index
+#sample_index = {'june': {'4988': [[40, 21, 7], [54, 27, 9]], '2881': [[12, 8, 3]], '309': [[35, 17, 6]], '2221': [[11, 18, 1]], '56': [[1, 4, 1]], '3535': [[3, 4, 1], [24, 34, 14], [30, 39, 16], [33, 47, 19], [34, 48, 19]], '4297': [[7, 29, 9]], '227': [[0, 2, 0]], '1388': [[6, 9, 2]], '2390': [[7, 11, 4]], '3023': [[12, 33, 11]], '874': [[4, 8, 2]], '4005': [[3, 13, 4], [7, 28, 9], [9, 29, 10], [16, 38, 13], [17, 45, 16]], '5123': [[4, 18, 6]], '4806': [[2, 1, 0]], '3078': [[3, 14, 3]], '2505': [[2, 8, 3]], '5125': [[1, 13, 4]], '4664': [[1, 9, 3]], '1918': [[17, 15, 7]], '2121': [[6, 10, 2], [15, 29, 8]], '1902': [[18, 31, 13]], '2925': [[0, 7, 1], [1, 11, 3], [4, 15, 4], [9, 25, 8]], '3062': [[6, 12, 3], [12, 24, 8]], '4016': [[3, 6, 1]], '1350': [[2, 5, 1], [5, 14, 4]], '3187': [[2, 10, 2]], '144': [[0, 1, 0], [9, 26, 9]], '1': [[16, 28, 10], [23, 33, 13], [35, 45, 17]], '922': [[7, 12, 5]], '5278': [[11, 21, 8]], '5203': [[0, 4, 2]], '903': [[2, 8, 5]], '1634': [[5, 14, 7]], '4714': [[0, 9, 3]], '4233': [[1, 4, 0], [8, 24, 9]], '4267': [[1, 22, 7], [2, 33, 10]], '1575': [[5, 11, 4]], '1312': [[11, 69, 25]], '5779': [[1, 7, 2]], '3278': [[5, 17, 6]], '4098': [[2, 4, 2]], '3068': [[2, 10, 3]], '2718': [[3, 5, 0], [3, 14, 5]], '4689': [[1, 15, 4]], '3493': [[4, 26, 10]], '5167': [[5, 16, 4]], '4425': [[23, 26, 10]], '5765': [[9, 36, 12]], '5273': [[0, 16, 4]], '327': [[15, 16, 5]], '4156': [[1, 7, 1], [7, 39, 11]], '4939': [[0, 10, 2]], '374': [[3, 5, 1]], '5412': [[2, 4, 1]], '3344': [[0, 2, 0], [0, 4, 1]], '5281': [[0, 18, 6]], '2456': [[5, 17, 4]], 'df': 58}}
+#updated_index = calculate_coverage(['june', 'july','august'], sample_ri)
+#updated_index
+
+#%%
+###################################### Pair Proximity ######################################
+def calculate_pair_prox(query_terms, reversed_index):
+    """
+    Metric: number of term (ignores decimals) between consecutive matched query terms in a document from left to right
+    Ignores any unmatched terms 
+
+    For each pair of terms ...select pair of distances that yield min prox distance. 
+
+    Average min instance = total min distances divided by number of matched query term pairs. 
+
+    Determine if the min distance is also an ORDERED pair i.e. left term < right term by term index position
+    
+    Inputs
+    - query_terms -> list[str]
+    - reversed_index
+
+    Output
+    - reversed_index
+
+    Schema:
+    {'4988': {'terms': {'june': [[40, 21, 7], [54, 27, 9]]},
+    'scores': [0, 0, 0, 0]},
+    '2881': {'terms': {'june': [[12, 8, 3]]}, 'scores': [0, 0, 0, 0]},
+    '309': {'terms': {'june': [[35, 17, 6]]}, 'scores': [0, 0, 0, 0]},
+    '2221': {'terms': {'june': [[11, 18, 1]]}, 'scores': [0, 0, 0, 0]},
+    '56': {'terms': {'june': [[1, 4, 1]]}, 'scores': [0, 0, 0, 0]},
+    '3535': {'terms': {'june': [[3, 4, 1],
+        [24, 34, 14],
+        [30, 39, 16],
+        [33, 47, 19],
+        [34, 48, 19]]},
+    'scores': [0, 0, 0, 0]},
+    """
+    # Also store the pairs scores for each document
+    prox_score_data = {}
+
+    # First detect size of query term, the scores won't be updated
+    if len(query_terms) <= 1:
+        print(f"Query list ingested only has 1 term: {query_terms}")
+        return reversed_index, prox_score_data
+
+    
+    # If not then compute the query term prox scores for EACH document in the reversed index
+    for docid, term_dict in reversed_index.items():
+        #Reduce query terms to only the keys available in the dictionary
+        relevant_query_terms = [term for term in query_terms if term in term_dict["terms"].keys()]
+        print(f"docid:{docid} has relevant terms {relevant_query_terms}")
+
+        #pair_scores = defaultdict(lambda: {"min_dist": 0, "ordered pairs": []})
+        # Check again and break for loop if relevant query terms are less than 2. 
+        # Skip to next docid
+
+        if len(relevant_query_terms) <= 1:
+            print(f"\tdocid:{docid} has relevant terms has only 1 value!,going to next docid")
+            # Add to prox score data
+            posting =[]
+            if len(relevant_query_terms) == 1:
+                posting += term_dict["terms"][relevant_query_terms.pop()]
+            
+            prox_score_data[docid] = [({'term_pairs': None},
+            {'min_dist': None},
+            {'indices': posting},
+            {'ordered': None})],
+            continue
+            
+        
+        print(f"\tdocid:{docid} has multiple relevant terms, calculating score")
+        pair_scores = []
+
+        for i in range(1,len(relevant_query_terms)):
+            #compute pairs then move right, sliding against the query terms in ORDER
+            postings1 = term_dict["terms"][relevant_query_terms[i-1]]
+            postings2 = term_dict["terms"][relevant_query_terms[i]]
+            print(f"\t\tEvaluating term pair: {relevant_query_terms[i-1]},{relevant_query_terms[i]}")
+
+            # Best score
+            min_distance = 100000000 # some arbitrary large number 
+            best_dist_pair = [] #a posting is... [[1,2,3],[3,5,6]]
+
+            # For each term e.g. june, july we compare EVERY value pair - create a lambda to find absolute difference 
+            distance_lambda = lambda a,b : max(abs(a[0] - b[0])-1,0) # minus 1 since no two positions will occupy the same index in the same docuemnt
+
+            # Go through all pairs of postings for each term
+            for post1 in postings1:
+                for post2 in postings2:
+                    curr_dist = distance_lambda(post1,post2) #Outputs a value >= 0
+                    if curr_dist == min_distance:
+                        if best_dist_pair is not None:
+                            # if they are equal, update ONLY if current posting is not ordered and new posting are ordered
+                            if (best_dist_pair[0][0] > best_dist_pair[1][0]) and (post1[0] < post2[0]):
+                                best_dist_pair = [post1,post2]
+                        else:
+                            #if none for whatever reason
+                            best_dist_pair = [post1,post2]
+                    elif curr_dist < min_distance:
+                        #then update the min distance IF pair is ordered
+                        best_dist_pair = [post1,post2]
+                        min_distance = curr_dist 
+            
+            #Once you have your min_distance and best dist_pair compute best score
+            term_pair_data= ({"term_pairs":[relevant_query_terms[i-1], relevant_query_terms[i]]},
+                                  {"min_dist":min_distance},
+                                  {"indices":best_dist_pair},
+                                  {"ordered":1 if best_dist_pair[0] < best_dist_pair[1] else 0}
+                                  )
+            pair_scores.append(term_pair_data)
+
+        print(f"\t\tEvaluation complete.")
+        # Once you have gone through all the pairs calculate the average prox score
+        total_proximity_sum = 0
+        total_ordered_pair_sum = 0
+        for term_pair, dist, term_pos, order_score in pair_scores:
+            total_proximity_sum += dist["min_dist"]
+            if order_score["ordered"] == 1:
+                total_ordered_pair_sum +=1
+        if len(relevant_query_terms)-1 == 0:
+            print(f"\n\nSOMETHING WRONG HERE? relevant_query_terms=0")
+            raise ValueError
+        else:
+            average_min_proximity = total_proximity_sum / (len(relevant_query_terms)-1)
+            #Update the reversed index for the docID
+            reversed_index[docid]["scores"][1] = 1/(1+average_min_proximity) # for prox score
+            reversed_index[docid]["scores"][2] = total_ordered_pair_sum #for each ordered pair
+        print(f"\t\ttotal proximity = {total_proximity_sum}, total_matched_pairs = {(len(relevant_query_terms)-1)}")
+
+        # Update the document scores, if we have calculated any pair scores
+        if len(pair_scores) > 0:
+            #average_proximity_score = total_proximity_sum/len(pair_scores) # use len(pair_scores since average is based off matched pairs
+            reversed_index[docid]["scores"][1] = 1/(1+average_min_proximity)
+        else:
+            reversed_index[docid]["scores"][1] = 0
+        # Update the ordered_pair score
+        
+        # Store the data in the pair score dictionary
+        prox_score_data[docid] = pair_scores
+
+    return reversed_index,prox_score_data # once all docIDs have been iterated through
+
+#updated_index,cal_data = calculate_pair_prox(['june', 'july','august'], sample_ri)
+#cal_data # Looks good to me
+#index,data = calculate_pair_prox(['june','july'],scored_index)
+
+#%%
+###################################### Pair Proximity ######################################
+def compute_final_score(alpha,beta,gamma,reversed_index):
+    """
+    Score based for a given query based on formula
+    """
+    index = reversed_index
+    for docid, term_dict in index.items():
+        score = term_dict["scores"]
+        final_score = alpha*score[0] + beta*score[1] + gamma*score[2]
+        index[docid]["scores"][3] = final_score
+
+    # Sort documents by score in descending order
+    #ranked_docs = sorted(document_scores.items(), key=lambda item: item[1], reverse=True)
+    return index # with scores
+#%%
+def find_documents(query, inverted_index):
     """
     Match documents based on the query against the inverted index.
     The search logic uses intersection of postings lists for each term in the query.
@@ -264,132 +415,159 @@ def match_documents(query, inverted_index):
     query_terms = preprocess_and_tokenize(query)
     if not query_terms:
         return []  # No terms to match
+    print(f"query terms: {query_terms}")
     
     # If all search terms must be present in the document, we start by checking if any of the terms are NOT in the index
     # if any(term not in inverted_index for term in query_terms):
     #    return []
-
-    # Now we can proceed to find the intersection of postings lists
-    """
-    Theory:
-    To find the intersection, we find the word term, then find the next term, until all terms are located 
     
-    We use the merging algorithm provided in the lectures which is to merge two terms at a time, starting with the smallest posting list
-    The posting list will then be be used to create a simplified posting list and merge successively until all the terms are searched...
-    the result is a posting list of matched documents
+    # Create a truncated dict of the postings (same as an OR query where every document is included)
+    truncated_index = truncate_index(query_terms,inverted_index)
+    #print(truncated_index)
+    # We can now use this to apply our 3 ranking mechanisms
+    """
+    we now need to build a dictionary to compute 3 scores...
+    Algorithm
+    1) turn then: For the truncated index into an index + words e.g.
+        doc 1: term_index: [word1:[index1,index2,..],word2:[index1,index2,..]] , score:[0,0,0]
+        doc 2: term_index: [word1:[index1,index2,..],word2:[index1,index2,..]] , score:[0,0,0]
+        doc 3: term_index: [word1:[index1,index2,..],word2:[index1,index2,..]] , score:[0,0,0]
+    2) Coverage can be computed by len(value)/len(total query terms) EZEZEZ
+    3) Avg_pair_ditance we need to check 
+        - if 1 term matched, then avg pair distance = 0 and score is 0 (e.g. if we have only 1 query term then this doesnt matter, but if we have 2 terms, and we get 1 still, it should be ranked and scored lower)
+        - if 2+ terms exist, then for each pair of terms iterate through each pair of index FROM LEFT TO RIGHT, this will yield proximity scores
+            - Take the minimum proximity score for each term pair e.g. if we have 4 matched terms we have 3 pairs and 3 scores: e.g. 1,3,5
+                - For each Term pair score you compute, store the pair (key) and current prox (value), ONLY update key IF (1) new prox is < old prox OR if ==, one is ordered
+                - Once all pairs are updated, increment the ordered pair score by 1 e.g. index[docid[score]][2] += 1
+            - Average min distance sum of total dis/num of matched pairs = (1+3+5)/3 = 3
+            - Reduce the prox distance to just For each min distance, compute also a ordered pair score
+    4) Reduce your index to now index[docid] = final_score(ndex[docid][score],alpha,beta,gamma)
+    5) Use the final score to order your documents
+    
+    DONE! lets go...
     """
 
-    # Reorder the query terms based on the value of the the number documents, asc
-    term_df_list = [(term,inverted_index[term]["df"]) for term in set(query_terms)]
-    term_df_list.sort(key=lambda x:x[1])
-    term_df_list = [a for a,_ in term_df_list]
+    # Step 1. Reverse the index
+    reversed_index = reverse_index(truncated_index)
+    #print(reversed_index)
 
-    print(f"TERM_DF: {term_df_list}")
-
-    # In the matching docs store the posting information for the smallest doc
-    matching_docs = [x[0] for x in inverted_index[term_df_list[0]]["postings"]] #only send the docID for now
-    #matching_docs = inverted_index[term_df_list[0]]["postings"]
-
-    # Remove duplicates from the matching docs first...
-    matching_docs = sorted(list(set(matching_docs)),reverse=False)
-    print(f"Matched docos 1st run:{matching_docs}")
-
-    #print(matching_docs)
-    # Now iterate through the list to search for docs in the II until all terms are processed
+    # Step 2 Compute metrics and populate scores
+    reversed_index = calculate_coverage(query_terms, reversed_index)
+    #print(reversed_index)
     
-    # Add if incase only one term is queried
-    if len(matching_docs) > 1:
-        for i in range(1,len(term_df_list)):
-            postings_2 = [x[0] for x in inverted_index[term_df_list[i]]["postings"]] # Creaet a simple list of documents
-            #postings_2 = inverted_index[term_df_list[i]]["postings"]
-            print(f"Current matching the term: {term_df_list[i]}")
+    # Step 3 Calculate Proximity Score
+    reversed_index, pair_data = calculate_pair_prox(query_terms, reversed_index) 
 
-            #Update matching_docs with the new posting list
-            matching_docs = posting_intersection_algorithm(matching_docs,postings_2)
-            print(matching_docs)
-            
-    return matching_docs
+    for key in reversed_index.keys():
+        print(f"KEY {key}: {reversed_index[key]['scores']}")
 
-    # We want to return the posting list withn the posting in it
+    # Step 4 Calculate Final Score
+    alpha,beta,gamma = 1,1,0.1
+    reversed_index = compute_final_score(alpha,beta,gamma,reversed_index)
+    
+    # Step 5, Provide a sorted output...
+    return reversed_index#, pair_data
 
-#matched_docs = match_documents("June", inverted_index)  # Use a set to avoid duplicates
+#scored_index = find_documents("bags and sales", inverted_index)  # Use a set to avoid duplicates
 #print(f"Matched documents: {sorted(matched_docs)}")
 #%%
+#scored_index
+
+#%%
+def rank_retrieve(scored_index):
+    sorted_docs = sorted(scored_index.items(),
+    key=lambda item: (-item[1]['scores'][-1], int(item[0]))
+    )
+
+    #print the docIDS
+    ordered_doc_ids = [docid for docid, _ in sorted_docs]
+    #print(ordered_doc_ids)
+    for docid in ordered_doc_ids:
+        print(docid)
+        #print(f"{docid}: {scored_index[docid]['scores'][-1]}")
 ###################################### Document ranking ######################################
 
-def rank_documents(doc_list, document_scores):
-    """
-    Rank documents based on their scores for a given query.
-    """
-    # Sort documents by score in descending order
-    ranked_docs = sorted(document_scores.items(), key=lambda item: item[1], reverse=True)
-    return ranked_docs
+#%%
+#query = """australia technology 271 billions"""
+#scored_index = find_documents(query, inverted_index)  # Use a set to avoid duplicates
+#rank_retrieve(scored_index)
+#%%
 
-def rank_sorting(query, inverted_index):
-    """
-    From the list of documents generated, we now need to score each
-    """
-    #score1 = score_1()
-    #score2 = score_2()
-    #score3 = score_3()
-    alpha = 0.5
-    beta = 0.3
-    gamma = 0.2
+def display_matching_lines(query_terms, docid, index_folder="data"):
+    doc_path = os.path.join(index_folder, str(docid))
+    if not os.path.exists(doc_path):
+        print(f"(Document {docid} not found)")
+        return
+    with open(doc_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    # For each term, find the closest match and its line number
+    shown_lines = set()
+    for term in query_terms:
+        # Find all positions for this term in this doc
+        # You may need to adjust this depending on your index structure
+        positions = []
+        for posting in inverted_index.get(term, {}).get(str(docid), []):
+            positions.append(posting[0])  # assuming posting[0] is the word index
+        if not positions:
+            continue
+        # Map word positions to line numbers
+        word_count = 0
+        for i, line in enumerate(lines):
+            line_len = len(line.split())
+            for pos in positions:
+                if word_count <= pos < word_count + line_len:
+                    if i not in shown_lines:
+                        print(lines[i].rstrip())
+                        shown_lines.add(i)
+                    break
+            word_count += line_len
 
-    #total_score = alpha * (matched_query_terms/total_query_terms) + beta * 1/(1+avg_pair_distance) + gamma * ordered_pairs
-    
+def process_query_with_display(user_input, inverted_index):
+    if user_input.startswith("> "):
+        query = user_input[2:]
+        query_terms = preprocess_and_tokenize(query)
+        scored_index = find_documents(query, inverted_index)
+        sorted_docs = sorted(scored_index.items(), key=lambda item: (-item[1]['scores'][-1], int(item[0])))
+        for docid, _ in sorted_docs:
+            print(f"> {docid}")
+            display_matching_lines(query_terms, docid)
+    else:
+        # Normal search
+        scored_index = find_documents(user_input, inverted_index)
+        rank_retrieve(scored_index)
 
-    # Sorted list
-    # sort order is by descending order of score and then document IDs
-    scorelist = []
-
-    pass
-
-
-def return_results(query, inverted_index):
-    """
-    Given a query and an inverted index, return the ranked results.
-    """
-    # Split the query into terms
-    terms = query.lower().split()
-    
-    # Initialize a dictionary to hold the scores for each document
-    scores = {}
-    
-    # Iterate through each term in the query
-    for term in terms:
-        if term in inverted_index:
-            postings = inverted_index[term]
-            for doc_id, positions in postings.items():
-                if doc_id not in scores:
-                    scores[doc_id] = 0
-                scores[doc_id] += len(positions)  # Increment score by number of occurrences
-    
-    # Sort documents by score in descending order
-    sorted_docs = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-    return sorted_docs
 
 if __name__ == "__main__":
     #check if two arguments are provided, always need (1) document path and (2) output_path of index files
-    if len(sys.argv) != 3:
-        print("Usage: python index.py <document_path> <index_path>")
-        print("Expected 2 arguments, got", len(sys.argv) - 1)
+    if len(sys.argv) != 2:
+        print("Usage: python index.py <index_path>")
+        print("Expected 1 arguments, got", len(sys.argv) - 1)
         sys.exit(1)
         # Expecting python index.py data doc_index
     else:
-        document_path = sys.argv[1]
-        output_path = sys.argv[2]
+        index_path = sys.argv[1]
+        #inverted_index_path = "/Users/gordonlam/Documents/GitHub/COMP6741/Project/doc_index/"
+        #Expected name of fileinverted_index2.json
 
-    while 1==1:
+    #Import inverted index
+    name_of_index_file = "inverted_index2.json"
+    inverted_index = load_index(index_path,name_of_index_file)
+
+    #while True:
+    #    try:
+    #        # (1) Accept a search query from the standard input
+    #        user_input = input("")
+    #        matched_docs = find_documents(user_input, inverted_index)  # Use a set to avoid duplicates
+    #        if matched_docs is None:
+    #            matched_docs = []
+    #        else: 
+    #            rank_retrieve(matched_docs)
+    while True:
         try:
-            # (1) Accept a search query from the standard input
             user_input = input("")
-            matched_docs = match_documents(user_input, inverted_index)  # Use a set to avoid duplicates
-            # (2) Output the result to the standard output as a sequence of document names (same as their document IDs)
-            for i in matched_docs:
-                print(f"{i}")
+            process_query_with_display(user_input, inverted_index)
         except (EOFError, KeyboardInterrupt):
-            print("Exiting search.")
             break
     
-    #try June,july
+# %%
+#run: python search2.py doc_index

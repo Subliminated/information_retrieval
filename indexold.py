@@ -77,7 +77,7 @@ def handle_hyphens(text):
 s = "D-Kans co-author in-depth set-aside five-year"
 s = "The cat's ex-wives and cats' toys were playing."
 
-#handle_hyphens(s)  # Example usage
+handle_hyphens(s)  # Example usage
 
 #%%
 ###################################### Normalization functions ######################################
@@ -93,7 +93,7 @@ def get_wordnet_pos(treebank_tag):
         return wordnet.ADV
     else:
         return wordnet.NOUN  # Default to noun
-#get_wordnet_pos('v')  # Example usage
+get_wordnet_pos('v')  # Example usage
 #%%
 def lemmatize_hyphenated(token):
     parts = token.split('-')
@@ -138,7 +138,7 @@ s = "The The US. u.S. US cat's ex-wives and cats' toys were playing."
 #normalize_text("cat cats cat's cats' breaches breach breached breaching co-author co-authored")
 
 s = handle_hyphens(s)
-#normalize_text(s)
+normalize_text(s)
 ###################################### Sentence Index ######################################
 
 #%%
@@ -171,7 +171,7 @@ def normalize_numeric_tokens(text):
 
 # Example usage:
 s = "The US. u.S. US population is 1,000,000. The year is 2023. Pi is 3.14. The price is 1,000.50."
-#normalize_numeric_tokens(s)
+normalize_numeric_tokens(s)
 
 ###################################### Full Preprocess ######################################
 
@@ -229,16 +229,14 @@ def preprocess_and_tokenize(text):
     #text = ' '.join([word for word in text.split() if word not in stop_words])
     
     # \b[\w-]+\b matches words that may include hyphens
-    #tokens = re.findall(r'\b[\w-]+\b', text)
-    tokens = re.findall(r'\b[\w-]+\b|[.!?]', text)
+    tokens = re.findall(r'\b[\w-]+\b', text)
     return tokens
-    #return text
 
 # string with lots of punctuation and special characters
 s = """The cat's ex-wives and cats' toys were playing.
 The U.S U.s. US population is 1,000,000. The year is 2023. Pi is 3.14. The price is 1,000.50.
 """
-s = "The cat's ex-wives and!? cats' toys were playing. Apple bottom' , jeans, boots with the fur"
+s = "The cat's ex-wives and cats' toys were playing."
 print(s)
 preprocess_and_tokenize(s)
 #%%
@@ -278,16 +276,10 @@ handle_paths(document_path, index_path)
 #%%
 ###
 # Sort the inverted index by docid and position during insertion
-def insert_sorted(list, item):
-    """
-    list: postings= current list
-    item: new_posting = new thing to add
-    
-    """
-
+def insert_sorted(postings, new_posting):
     # Binary search to find the correct insertion point
-    index = bisect.bisect_left(list, item)
-    list.insert(index, item)
+    index = bisect.bisect_left(postings, new_posting)
+    postings.insert(index, new_posting)
 
 ###
 #%%
@@ -305,48 +297,40 @@ def create_index(document_path, index_path):
     ]    
     # Form the inverted index - create a list object to have an empty list for each inverted index term
     #inverted_index = defaultdict(list)
-    inverted_index = defaultdict(lambda: {})
+    inverted_index = defaultdict(lambda: {"df": 0, "postings": []})
 
     #inverted_index = defaultdict(tuple) 
-    total_tokens = 0
 
     # Go through each file in the folder
     for filename in files_to_process:
         # First reach the file and for each word, create a posting list with the document ID that contains the word. 
         with open(filename, 'r', encoding='utf-8') as file:
-            docid = int(os.path.basename(filename))  # Get the file name without the path
-            
-            # ALTERNATIVELY Process each line individually in the document to store the line and the sentence all at once!
-            lines = file.readlines()
-            
-            sentence_pos=0
-            #line_pos=0
-            term_pos=0
+            file_name = int(os.path.basename(filename))  # Get the file name without the path
+            content = file.read()
+            tokens = preprocess_and_tokenize(content)
+           
+           # For each word, add its position in the document to the inverted index
+            for position, word in enumerate(tokens):
+                if word not in inverted_index:
+                    inverted_index[word] = {"df": 0, "postings": []}
+                insert_sorted(inverted_index[word]["postings"], (file_name, position))
+    
+    for word, data in inverted_index.items():
+        doc_ids = set(doc_id for doc_id, _ in data["postings"])
+        inverted_index[word]["df"] = len(doc_ids)
 
-            # Note the term tag will be a tuple of (sentence_pos, line_pos, term_pos)
-            for line_pos, line in enumerate(lines):
-                #this yields tokens
-                tokens = preprocess_and_tokenize(line)
-                for term in tokens:
-                    # If the term is not already in the dictionary, then initialise
-                    if term in ("!",".","?"):
-                        sentence_pos +=1
-                    else:
-                        if term not in inverted_index:
-                            inverted_index[term] = {docid: [(term_pos, line_pos, sentence_pos)]}
-                            term_pos +=1
-                        else:
-                            # Do a bisected insert --NOT needed
-                            #insert_sorted(inverted_index[term][docid], (term_pos, line_pos, sentence_pos))
-                            if docid not in inverted_index[term]:
-                                inverted_index[term][docid] = []
-                            inverted_index[term][docid].append((term_pos, line_pos, sentence_pos))
-                        total_tokens += 1
-
+    #print(inverted_index)
     # Save the inverted index to the output path as a text file
-    output_path = os.path.join(index_path, 'inverted_index2.json')
+    output_path = os.path.join(index_path, 'inverted_index.txt')
+    #with open(output_path, 'w', encoding='utf-8') as file:
+    #    for word in sorted(inverted_index.keys()):
+    #        df_postings = inverted_index[word]
+    #        # Create new line for each word in the inverted index
+    #        file.write(f"{word}: {df_postings}\n")
 
-    # Sort the dictionary by the term before dumping to JSON
+    # Output a json file instead
+    output_path = os.path.join(index_path, 'inverted_index.json')
+    # Sort the dictionary by key before dumping to JSON
     sorted_index = {word: inverted_index[word] for word in sorted(inverted_index.keys())}
     with open(output_path, 'w', encoding='utf-8') as file:
         json.dump(sorted_index, file, ensure_ascii=False, indent=2)
@@ -354,7 +338,7 @@ def create_index(document_path, index_path):
     # Finally, print the number of documents, tokens, and terms in the index
     #n_doc, n_token, n_terms = process_documents(document_path, output_path)
     n_doc = len(files_to_process)  # Number of documents is the number of files processed
-    n_token = total_tokens #sum(len(postings) for postings in inverted_index.values())  # Total
+    n_token = sum(len(postings) for postings in inverted_index.values())  # Total
     n_terms = len(inverted_index)  # Number of unique terms in the index
     print(f"Total number of documents: {n_doc}")
     print(f"Total number of tokens: {n_token}")
@@ -376,33 +360,3 @@ if "__name__" == "__main__":
 
     create_index(document_path, output_path)
     # Example - python create_index.py ./data ./docindex
-
-
-""" DATA STRUCTURE SCHEMA
-inverted_index = {
-    "apple": {
-        1361: [
-            (37, 2),  # (global_position, line_number)
-            (58, 3)
-        ]
-    },
-    "recipe": {
-        1361: [
-            (39, 2),
-            (80, 5)
-        ]
-    }
-}
-"""
-
-#%%
-# First reach the file and for each word, create a posting list with the document ID that contains the word. 
-filename_path = "/Users/gordonlam/Documents/GitHub/COMP6741/Project/data/5177"
-with open(filename_path, 'r', encoding='utf-8') as file:
-    file_name = int(os.path.basename(filename_path))  # Get the file name without the path
-
-    #process the entire document into one string
-    content = file.read()
-    #tokens = preprocess_and_tokenize(content)
-print(content)       
-# %%
