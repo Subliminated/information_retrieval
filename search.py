@@ -18,9 +18,9 @@ lemmatizer = WordNetLemmatizer()
 
 #%%
 #Temporary import for inverted index
-inverted_index_path = "/Users/gordonlam/Documents/GitHub/COMP6741/Project/doc_index/inverted_index.json"
-with open(inverted_index_path, 'r', encoding='utf-8') as f:
-    inverted_index = json.load(f)
+#inverted_index_path = "/Users/gordonlam/Documents/GitHub/COMP6741/Project/doc_index/inverted_index.json"
+#with open(inverted_index_path, 'r', encoding='utf-8') as f:
+#    inverted_index = json.load(f)
 ###################################### Load functions ######################################
 
 def load_index(index_folder, name_of_index_file):
@@ -284,7 +284,7 @@ def calculate_pair_prox(query_terms, reversed_index):
     'scores': [0, 0, 0, 0]},
     """
     # Also store the pairs scores for each document
-    #prox_score_data = {}
+    prox_score_data = {}
 
     # First detect size of query term, the scores won't be updated
     if len(query_terms) == 0:
@@ -306,7 +306,7 @@ def calculate_pair_prox(query_terms, reversed_index):
                 
             
                 
-        return reversed_index, prox_score_data
+        return reversed_index
 
     
     # If not then compute the query term prox scores for EACH document in the reversed index
@@ -329,8 +329,6 @@ def calculate_pair_prox(query_terms, reversed_index):
             #{'min_dist': None},
             #{'indices': posting},
             #{'ordered': None})],
-
-    
             continue
             
         
@@ -432,7 +430,8 @@ def calculate_pair_prox(query_terms, reversed_index):
         # Store the data in the pair score dictionary
         #prox_score_data[docid] = pair_scores
 
-    return reversed_index #,prox_score_data # once all docIDs have been iterated through
+    return reversed_index 
+#,prox_score_data # once all docIDs have been iterated through
 
 #updated_index,cal_data = calculate_pair_prox(['june', 'july','august'], sample_ri)
 #cal_data # Looks good to me
@@ -531,23 +530,16 @@ def find_documents(query, inverted_index):
 #scored_index
 
 #%%
-def rank_retrieve(user_input, scored_index, index_path):
+def rank_retrieve(scored_index, index_path, show_line):
 
     # Check if the user has displayed >'
-
-
     sorted_docs = sorted(scored_index.items(),
     key=lambda item: (-item[1]['scores'][-1], int(item[0]))
     )
 
-    print(sorted_docs)
+    #print(sorted_docs)
 
-    #print the docIDS
-    ordered_doc_ids = [docid for docid, _ in sorted_docs]
-
-    if user_input.startswith("> "):
-        #Special print
-        query = user_input[2:]
+    if not show_line:
         for docid, _ in sorted_docs:
             print(docid)
             pass
@@ -559,20 +551,20 @@ def rank_retrieve(user_input, scored_index, index_path):
             lines = list(set([f"{line_num}" for _,line_num,_ in package["best_indices"]])) #dedupe
             lines.sort() #order
             
-            file_path = index_path + f"{docid}.json"
+            file_path = os.path.join(index_path,f"{docid}.json")
             with open(file_path, "r", encoding="utf-8") as f:
                 doc_json = json.load(f)
 
             #print(file_path)
             #Now we need to open up the document and print the lines
     
-            print(docid)
+            print(f"> {docid}")
             for line in lines:
                 print(doc_json[line], end='')
 
-user_input = "AuStralia Technology"
-matched_docs = find_documents(user_input, inverted_index)  # Use a set to avoid duplicates
-rank_retrieve(user_input,matched_docs,index_path)
+#user_input = "AuStralia Technology"
+#matched_docs = find_documents(user_input, inverted_index)  # Use a set to avoid duplicates
+#rank_retrieve(user_input,matched_docs,index_path)
 
 ###################################### Document ranking ######################################
 
@@ -581,44 +573,6 @@ rank_retrieve(user_input,matched_docs,index_path)
 #scored_index = find_documents(query, inverted_index)  # Use a set to avoid duplicates
 #rank_retrieve(scored_index)
 #%%
-
-def display_matching_lines(query_terms, docid, inverted_index, data_folder="data"):
-    """
-    Prints, for each query term, the first line in the document containing that term.
-    Each line is printed only once per document, in order of appearance.
-    """
-    #doc_path = os.path.join(data_folder, str(docid))
-    if not os.path.exists(doc_path):
-        print(f"(Document {docid} not found)")
-        return
-    with open(doc_path, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-    shown_lines = set()
-    for term in query_terms:
-        postings = inverted_index.get(term, {})
-        posting_list = postings.get(str(docid), [])
-        # Collect all line numbers for this term in this doc
-        line_numbers = sorted({posting[1] for posting in posting_list})
-        for line_num in line_numbers:
-            if line_num not in shown_lines and 0 <= line_num < len(lines):
-                print(lines[line_num].rstrip())
-                shown_lines.add(line_num)
-                break  # Only show the first line for this term
-        
-def process_query_with_display(user_input, inverted_index):
-    if user_input.startswith("> "):
-        query = user_input[2:]
-        query_terms = preprocess_and_tokenize(query)
-        scored_index = find_documents(query, inverted_index)
-        sorted_docs = sorted(scored_index.items(), key=lambda item: (-item[1]['scores'][-1], int(item[0])))
-        for docid, _ in sorted_docs:
-            print(f"> {docid}")
-            display_matching_lines(query_terms, docid)
-    else:
-        # Normal search
-        scored_index = find_documents(user_input, inverted_index)
-        rank_retrieve(scored_index)
-
 
 if __name__ == "__main__":
     #check if two arguments are provided, always need (1) document path and (2) output_path of index files
@@ -640,21 +594,15 @@ if __name__ == "__main__":
         try:
             # (1) Accept a search query from the standard input
             user_input = input("")
-            matched_docs = find_documents(user_input, inverted_index)  # Use a set to avoid duplicates
-            rank_retrieve(user_input,matched_docs,index_path)
-    #while True:
-    #    try:
-    #        user_input = input("")
-    #        process_query_with_display(user_input, inverted_index)
+            if user_input.startswith("> "):
+                user_input = user_input[2:]
+                matched_docs = find_documents(user_input, inverted_index)  # Use a set to avoid duplicates
+                rank_retrieve(matched_docs,index_path,show_line = True)
+            else:
+                matched_docs = find_documents(user_input, inverted_index)  # Use a set to avoid duplicates
+                rank_retrieve(matched_docs,index_path,show_line = False)
         except (EOFError, KeyboardInterrupt):
             break
     
-# %%
 #run: python search.py doc_index
 # on CSE: python3 search.py doc_index
-
-#%%
-a = [1]
-for i in range(1,len(a)-1):
-    print(i)
-# %%

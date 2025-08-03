@@ -376,7 +376,7 @@ if __name__ == "__main__":
         output_path = sys.argv[2]
 
     create_index(document_path, output_path)
-    # Example - python index.py ./data ./doc index
+    # Example - python index.py ./data ./doc_index
     # Example on CSE -  python3 index.py /home/cs6714/Public/data doc_index
 
 
