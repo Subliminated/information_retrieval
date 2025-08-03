@@ -2,10 +2,13 @@
 import os
 import re
 import sys
-import shutil
 import json
 from collections import defaultdict
 
+import nltk
+nltk.download('punkt', quiet=True)
+nltk.download('averaged_perceptron_tagger', quiet=True)
+nltk.download('wordnet', quiet=True)
 
 from nltk import word_tokenize, pos_tag
 from nltk.stem import WordNetLemmatizer
@@ -14,8 +17,8 @@ from nltk.corpus import wordnet
 lemmatizer = WordNetLemmatizer()
 
 #%%
-# Temporary import for inverted index
-inverted_index_path = "/Users/gordonlam/Documents/GitHub/COMP6741/Project/doc_index/inverted_index2.json"
+#Temporary import for inverted index
+inverted_index_path = "/Users/gordonlam/Documents/GitHub/COMP6741/Project/doc_index/inverted_index.json"
 with open(inverted_index_path, 'r', encoding='utf-8') as f:
     inverted_index = json.load(f)
 ###################################### Load functions ######################################
@@ -25,7 +28,6 @@ def load_index(index_folder, name_of_index_file):
     index_file = os.path.join(index_folder, name_of_index_file)
     with open(index_file, "r", encoding="utf-8") as f:
         return json.load(f)
-
 
 ###################################### Preprocessing functions ######################################
 
@@ -186,10 +188,18 @@ def reverse_index(inverted_index):
             for term_tuple in postings:
                 reversed_index[docid]["terms"][term].append(term_tuple)
 
-    # Add scores
+    # initialise scores and best matching term indexes
     for docid,value in reversed_index.items():
         reversed_index[docid]["scores"] = [0,0,0,0]
+        # Add best matching terms:
+        """Logic for displaying lines..
+        Case A: Only consider single terms , then just print occurrence
+        Case B: for multiple query, simple take the term pairs and extract the lines in which they exist -> dedupe, order, print
+        """
+        reversed_index[docid]["best_indices"] = []
     return reversed_index
+
+   
 
 sample_index = {
     'june': {
@@ -274,11 +284,28 @@ def calculate_pair_prox(query_terms, reversed_index):
     'scores': [0, 0, 0, 0]},
     """
     # Also store the pairs scores for each document
-    prox_score_data = {}
+    #prox_score_data = {}
 
     # First detect size of query term, the scores won't be updated
-    if len(query_terms) <= 1:
-        print(f"Query list ingested only has 1 term: {query_terms}")
+    if len(query_terms) == 0:
+        #print(f"Query list ingested only has 1 term: {query_terms}")
+        return reversed_index
+
+    if len(query_terms) == 1:
+        for docid, term_dict in reversed_index.items():
+            # Store pair prox score of the first entry...
+            relevant_query_terms = [term for term in query_terms if term in term_dict["terms"].keys()]
+
+            
+            if len(relevant_query_terms) == 1:
+                #[[40, 21, 7], [54, 27, 9]]
+                #posting += term_dict["terms"][relevant_query_terms.pop()]
+                # Add the best first posting directly into the index.. to capture the best term sentence
+                post = term_dict["terms"][relevant_query_terms.pop()][0]
+                reversed_index[docid]["best_indices"].append(post)
+                
+            
+                
         return reversed_index, prox_score_data
 
     
@@ -286,34 +313,35 @@ def calculate_pair_prox(query_terms, reversed_index):
     for docid, term_dict in reversed_index.items():
         #Reduce query terms to only the keys available in the dictionary
         relevant_query_terms = [term for term in query_terms if term in term_dict["terms"].keys()]
-        print(f"docid:{docid} has relevant terms {relevant_query_terms}")
+        #print(f"docid:{docid} has relevant terms {relevant_query_terms}")
 
         #pair_scores = defaultdict(lambda: {"min_dist": 0, "ordered pairs": []})
         # Check again and break for loop if relevant query terms are less than 2. 
         # Skip to next docid
 
         if len(relevant_query_terms) <= 1:
-            print(f"\tdocid:{docid} has relevant terms has only 1 value!,going to next docid")
-            # Add to prox score data
-            posting =[]
             if len(relevant_query_terms) == 1:
-                posting += term_dict["terms"][relevant_query_terms.pop()]
+                post = term_dict["terms"][relevant_query_terms.pop()][0]
+                reversed_index[docid]["best_indices"].append(post)
             
-            prox_score_data[docid] = [({'term_pairs': None},
-            {'min_dist': None},
-            {'indices': posting},
-            {'ordered': None})],
+            #
+            #prox_score_data[docid] = [({'term_pairs': None},
+            #{'min_dist': None},
+            #{'indices': posting},
+            #{'ordered': None})],
+
+    
             continue
             
         
-        print(f"\tdocid:{docid} has multiple relevant terms, calculating score")
+        ###print(f"\tdocid:{docid} has multiple relevant terms, calculating score")
         pair_scores = []
-
+        pair_score_list = []
         for i in range(1,len(relevant_query_terms)):
             #compute pairs then move right, sliding against the query terms in ORDER
             postings1 = term_dict["terms"][relevant_query_terms[i-1]]
             postings2 = term_dict["terms"][relevant_query_terms[i]]
-            print(f"\t\tEvaluating term pair: {relevant_query_terms[i-1]},{relevant_query_terms[i]}")
+            ###print(f"\t\tEvaluating term pair: {relevant_query_terms[i-1]},{relevant_query_terms[i]}")
 
             # Best score
             min_distance = 100000000 # some arbitrary large number 
@@ -347,7 +375,35 @@ def calculate_pair_prox(query_terms, reversed_index):
                                   )
             pair_scores.append(term_pair_data)
 
-        print(f"\t\tEvaluation complete.")
+            #Also add the best pairs to the pair list,
+            pair_score_list += best_dist_pair
+
+        #Store indices for best_dict_pair in pair_scores, for each term pair however, only, these are chained...
+        """
+        example ab will have a indices for ab = 2 posting go through 0 times
+        example abc will have will have a indices for ab and bc = 4 posting, need to go through 1 time 
+        example abcd will hace an indices for ab, bc, cd = 6 posting, need to go through 2 times
+        example abcde will hace an indices for ab, bc, cd, de = 8 posting, need to go through 3 times
+
+        i.e. (len(posting) - 1) * 2 = 6 posting to do through, 
+        """
+        best_pair_scores = []
+        
+        # Remove first and last character
+        
+        # go through all inner elements
+        for i in range(1,len(relevant_query_terms)-1):
+            # Check if which occurence of the term appears first
+            if pair_score_list[i][0] < pair_score_list[i+1][0]:
+                best_pair_scores.append(pair_score_list[i])
+            else:
+                best_pair_scores.append(pair_score_list[i+1])
+        best_pair_scores = [pair_score_list[0]] + best_pair_scores + [pair_score_list[-1]] #Add the first and last pairscores
+        # sort the key
+        # best_pair_scores.sort(key=lambda x: x[1]) # No need, sorted later anyways
+        reversed_index[docid]["best_indices"] += best_pair_scores
+
+        ###print(f"\t\tEvaluation complete.")
         # Once you have gone through all the pairs calculate the average prox score
         total_proximity_sum = 0
         total_ordered_pair_sum = 0
@@ -356,14 +412,14 @@ def calculate_pair_prox(query_terms, reversed_index):
             if order_score["ordered"] == 1:
                 total_ordered_pair_sum +=1
         if len(relevant_query_terms)-1 == 0:
-            print(f"\n\nSOMETHING WRONG HERE? relevant_query_terms=0")
+            ###print(f"\n\nSOMETHING WRONG HERE? relevant_query_terms=0")
             raise ValueError
         else:
             average_min_proximity = total_proximity_sum / (len(relevant_query_terms)-1)
             #Update the reversed index for the docID
             reversed_index[docid]["scores"][1] = 1/(1+average_min_proximity) # for prox score
             reversed_index[docid]["scores"][2] = total_ordered_pair_sum #for each ordered pair
-        print(f"\t\ttotal proximity = {total_proximity_sum}, total_matched_pairs = {(len(relevant_query_terms)-1)}")
+        ###print(f"\t\ttotal proximity = {total_proximity_sum}, total_matched_pairs = {(len(relevant_query_terms)-1)}")
 
         # Update the document scores, if we have calculated any pair scores
         if len(pair_scores) > 0:
@@ -374,9 +430,9 @@ def calculate_pair_prox(query_terms, reversed_index):
         # Update the ordered_pair score
         
         # Store the data in the pair score dictionary
-        prox_score_data[docid] = pair_scores
+        #prox_score_data[docid] = pair_scores
 
-    return reversed_index,prox_score_data # once all docIDs have been iterated through
+    return reversed_index #,prox_score_data # once all docIDs have been iterated through
 
 #updated_index,cal_data = calculate_pair_prox(['june', 'july','august'], sample_ri)
 #cal_data # Looks good to me
@@ -415,7 +471,7 @@ def find_documents(query, inverted_index):
     query_terms = preprocess_and_tokenize(query)
     if not query_terms:
         return []  # No terms to match
-    print(f"query terms: {query_terms}")
+    #print(f"query terms: {query_terms}")
     
     # If all search terms must be present in the document, we start by checking if any of the terms are NOT in the index
     # if any(term not in inverted_index for term in query_terms):
@@ -456,10 +512,11 @@ def find_documents(query, inverted_index):
     #print(reversed_index)
     
     # Step 3 Calculate Proximity Score
-    reversed_index, pair_data = calculate_pair_prox(query_terms, reversed_index) 
+    #reversed_index, pair_data = calculate_pair_prox(query_terms, reversed_index) 
+    reversed_index = calculate_pair_prox(query_terms, reversed_index) 
 
-    for key in reversed_index.keys():
-        print(f"KEY {key}: {reversed_index[key]['scores']}")
+    #for key in reversed_index.keys():
+    #    print(f"KEY {key}: {reversed_index[key]['scores']}")
 
     # Step 4 Calculate Final Score
     alpha,beta,gamma = 1,1,0.1
@@ -474,17 +531,49 @@ def find_documents(query, inverted_index):
 #scored_index
 
 #%%
-def rank_retrieve(scored_index):
+def rank_retrieve(user_input, scored_index, index_path):
+
+    # Check if the user has displayed >'
+
+
     sorted_docs = sorted(scored_index.items(),
     key=lambda item: (-item[1]['scores'][-1], int(item[0]))
     )
 
+    print(sorted_docs)
+
     #print the docIDS
     ordered_doc_ids = [docid for docid, _ in sorted_docs]
-    #print(ordered_doc_ids)
-    for docid in ordered_doc_ids:
-        print(docid)
-        #print(f"{docid}: {scored_index[docid]['scores'][-1]}")
+
+    if user_input.startswith("> "):
+        #Special print
+        query = user_input[2:]
+        for docid, _ in sorted_docs:
+            print(docid)
+            pass
+    else:
+        #Regular print
+        for docid, package in sorted_docs:
+        #term_dict, score_dict, best_indices in sorted_docs:
+            # find lines to parse:
+            lines = list(set([f"{line_num}" for _,line_num,_ in package["best_indices"]])) #dedupe
+            lines.sort() #order
+            
+            file_path = index_path + f"{docid}.json"
+            with open(file_path, "r", encoding="utf-8") as f:
+                doc_json = json.load(f)
+
+            #print(file_path)
+            #Now we need to open up the document and print the lines
+    
+            print(docid)
+            for line in lines:
+                print(doc_json[line], end='')
+
+user_input = "AuStralia Technology"
+matched_docs = find_documents(user_input, inverted_index)  # Use a set to avoid duplicates
+rank_retrieve(user_input,matched_docs,index_path)
+
 ###################################### Document ranking ######################################
 
 #%%
@@ -493,35 +582,29 @@ def rank_retrieve(scored_index):
 #rank_retrieve(scored_index)
 #%%
 
-def display_matching_lines(query_terms, docid, index_folder="data"):
-    doc_path = os.path.join(index_folder, str(docid))
+def display_matching_lines(query_terms, docid, inverted_index, data_folder="data"):
+    """
+    Prints, for each query term, the first line in the document containing that term.
+    Each line is printed only once per document, in order of appearance.
+    """
+    #doc_path = os.path.join(data_folder, str(docid))
     if not os.path.exists(doc_path):
         print(f"(Document {docid} not found)")
         return
     with open(doc_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
-    # For each term, find the closest match and its line number
     shown_lines = set()
     for term in query_terms:
-        # Find all positions for this term in this doc
-        # You may need to adjust this depending on your index structure
-        positions = []
-        for posting in inverted_index.get(term, {}).get(str(docid), []):
-            positions.append(posting[0])  # assuming posting[0] is the word index
-        if not positions:
-            continue
-        # Map word positions to line numbers
-        word_count = 0
-        for i, line in enumerate(lines):
-            line_len = len(line.split())
-            for pos in positions:
-                if word_count <= pos < word_count + line_len:
-                    if i not in shown_lines:
-                        print(lines[i].rstrip())
-                        shown_lines.add(i)
-                    break
-            word_count += line_len
-
+        postings = inverted_index.get(term, {})
+        posting_list = postings.get(str(docid), [])
+        # Collect all line numbers for this term in this doc
+        line_numbers = sorted({posting[1] for posting in posting_list})
+        for line_num in line_numbers:
+            if line_num not in shown_lines and 0 <= line_num < len(lines):
+                print(lines[line_num].rstrip())
+                shown_lines.add(line_num)
+                break  # Only show the first line for this term
+        
 def process_query_with_display(user_input, inverted_index):
     if user_input.startswith("> "):
         query = user_input[2:]
@@ -550,24 +633,28 @@ if __name__ == "__main__":
         #Expected name of fileinverted_index2.json
 
     #Import inverted index
-    name_of_index_file = "inverted_index2.json"
+    name_of_index_file = "inverted_index.json"
     inverted_index = load_index(index_path,name_of_index_file)
 
-    #while True:
-    #    try:
-    #        # (1) Accept a search query from the standard input
-    #        user_input = input("")
-    #        matched_docs = find_documents(user_input, inverted_index)  # Use a set to avoid duplicates
-    #        if matched_docs is None:
-    #            matched_docs = []
-    #        else: 
-    #            rank_retrieve(matched_docs)
     while True:
         try:
+            # (1) Accept a search query from the standard input
             user_input = input("")
-            process_query_with_display(user_input, inverted_index)
+            matched_docs = find_documents(user_input, inverted_index)  # Use a set to avoid duplicates
+            rank_retrieve(user_input,matched_docs,index_path)
+    #while True:
+    #    try:
+    #        user_input = input("")
+    #        process_query_with_display(user_input, inverted_index)
         except (EOFError, KeyboardInterrupt):
             break
     
 # %%
-#run: python search2.py doc_index
+#run: python search.py doc_index
+# on CSE: python3 search.py doc_index
+
+#%%
+a = [1]
+for i in range(1,len(a)-1):
+    print(i)
+# %%

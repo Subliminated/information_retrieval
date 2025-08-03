@@ -18,22 +18,20 @@ import bisect
 from collections import defaultdict
 
 #%%
+
+#python 3.9 ONLY
+
 # Add stop words and lemmatization function
 import nltk
-#nltk.download('punkt_tab')
-#nltk.download('averaged_perceptron_tagger_eng')
-#nltk.download('popular')
-#nltk.download('punkt')
-#nltk.download('wordnet')
-#nltk.download('omw-1.4')
-#nltk.download('averaged_perceptron_tagger')
+nltk.download('punkt', quiet=True)
+nltk.download('averaged_perceptron_tagger', quiet=True)
+nltk.download('wordnet', quiet=True)
 
 #%%
 import nltk
 from nltk import word_tokenize, pos_tag
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import wordnet
-from nltk.corpus import stopwords
 
 lemmatizer = WordNetLemmatizer()
 
@@ -49,8 +47,8 @@ def handle_abbreviations(text):
     text = re.sub(r'\b([A-Za-z])\.', r'\1', text)
     return text
 
-test_string = "The U.S. co-authors' five-year. set-aside BUT. breach was in-depth!"
-handle_abbreviations(test_string)
+#test_string = "The U.S. co-authors' five-year. set-aside BUT. breach was in-depth!"
+#handle_abbreviations(test_string)
 
 ###################################### Handle Hyphens ######################################
 
@@ -74,8 +72,8 @@ def handle_hyphens(text):
     text = text.lower()
     return re.sub(r'\b\w+(?:-\w+)+\b', replace, text)
 
-s = "D-Kans co-author in-depth set-aside five-year"
-s = "The cat's ex-wives and cats' toys were playing."
+#s = "D-Kans co-author in-depth set-aside five-year"
+#s = "The cat's ex-wives and cats' toys were playing."
 
 #handle_hyphens(s)  # Example usage
 
@@ -130,14 +128,8 @@ def normalize_text(text):
     lemmatized = ' '.join(lemmatized)
     return lemmatized
 
-s = "co-author co-authored author authored"
-
-# Output: ['co-author', 'co-author', 'author', 'author']
-s = "The The US. u.S. US cat's ex-wives and cats' toys were playing."
-#normalize_text("cat cats cat's cats'")
-#normalize_text("cat cats cat's cats' breaches breach breached breaching co-author co-authored")
-
-s = handle_hyphens(s)
+#s = "The The US. u.S. US cat's ex-wives and cats' toys were playing."
+#s = handle_hyphens(s)
 #normalize_text(s)
 ###################################### Sentence Index ######################################
 
@@ -149,8 +141,8 @@ def split_into_sentences(text):
     sentences = sentence_endings.split(text.strip())
     return sentences
 
-normalized = normalize_text("This is a sentence. Is it? Yes! Let's see if it works. It should work well.")
-split_into_sentences(normalized)
+#normalized = normalize_text("This is a sentence. Is it? Yes! Let's see if it works. It should work well.")
+#split_into_sentences(normalized)
 
 ###################################### Handle numeric tokens ######################################
 #%%
@@ -170,7 +162,7 @@ def normalize_numeric_tokens(text):
     return text
 
 # Example usage:
-s = "The US. u.S. US population is 1,000,000. The year is 2023. Pi is 3.14. The price is 1,000.50."
+#s = "The US. u.S. US population is 1,000,000. The year is 2023. Pi is 3.14. The price is 1,000.50."
 #normalize_numeric_tokens(s)
 
 ###################################### Full Preprocess ######################################
@@ -239,8 +231,8 @@ s = """The cat's ex-wives and cats' toys were playing.
 The U.S U.s. US population is 1,000,000. The year is 2023. Pi is 3.14. The price is 1,000.50.
 """
 s = "The cat's ex-wives and!? cats' toys were playing. Apple bottom' , jeans, boots with the fur"
-print(s)
-preprocess_and_tokenize(s)
+#print(s)
+#preprocess_and_tokenize(s)
 #%%
 
 def handle_paths(document_path, index_path):
@@ -269,12 +261,12 @@ def handle_paths(document_path, index_path):
                 shutil.rmtree(file_path)
 
     # recreate index_path regardless if the directory exists
-    os.makedirs(os.path.dirname(index_path), exist_ok=True)
+    os.makedirs(index_path, exist_ok=True)
 
-document_path = os.getcwd() + '/Project/data/'
-index_path = os.getcwd() + '/Project/doc_index/'
-print(os.getcwd())
-handle_paths(document_path, index_path)
+#document_path = os.getcwd() + '/Project/data/'
+#index_path = os.getcwd() + '/Project/doc_index/'
+#print(os.getcwd())
+#handle_paths(document_path, index_path)
 #%%
 ###
 # Sort the inverted index by docid and position during insertion
@@ -319,6 +311,15 @@ def create_index(document_path, index_path):
             # ALTERNATIVELY Process each line individually in the document to store the line and the sentence all at once!
             lines = file.readlines()
             
+            #In your index, create a json file for each document where the key is the line number and the value is the string
+            indexed_docid_path = os.path.join(index_path, f"{docid}.json")
+
+            doc_index = {index:value for index,value in enumerate(lines)}
+            with open(indexed_docid_path, 'w', encoding='utf-8') as file:
+                #json.dump(sorted_index, file, ensure_ascii=False, indent=None, separators=(',', ':'))
+                json.dump(doc_index, file, ensure_ascii=False, indent=None, separators=(',', ':'))
+            
+            #Now Create an inverted index
             sentence_pos=0
             #line_pos=0
             term_pos=0
@@ -344,12 +345,13 @@ def create_index(document_path, index_path):
                         total_tokens += 1
 
     # Save the inverted index to the output path as a text file
-    output_path = os.path.join(index_path, 'inverted_index2.json')
+    output_path = os.path.join(index_path, 'inverted_index.json')
 
     # Sort the dictionary by the term before dumping to JSON
     sorted_index = {word: inverted_index[word] for word in sorted(inverted_index.keys())}
     with open(output_path, 'w', encoding='utf-8') as file:
-        json.dump(sorted_index, file, ensure_ascii=False, indent=2)
+        #json.dump(sorted_index, file, ensure_ascii=False, indent=None, separators=(',', ':'))
+        json.dump(sorted_index, file, ensure_ascii=False, indent=None)
 
     # Finally, print the number of documents, tokens, and terms in the index
     #n_doc, n_token, n_terms = process_documents(document_path, output_path)
@@ -359,12 +361,11 @@ def create_index(document_path, index_path):
     print(f"Total number of documents: {n_doc}")
     print(f"Total number of tokens: {n_token}")
     print(f"Total number of terms: {n_terms}")
-
-create_index(document_path, index_path)
+ 
+#create_index(document_path, index_path)
 #%%
 
-
-if "__name__" == "__main__":
+if __name__ == "__main__":
     #check if two arguments are provided, always need (1) document path and (2) output_path of index files
     if len(sys.argv) != 3:
         print("Usage: python index.py <document_path> <index_path>")
@@ -375,34 +376,7 @@ if "__name__" == "__main__":
         output_path = sys.argv[2]
 
     create_index(document_path, output_path)
-    # Example - python create_index.py ./data ./docindex
+    # Example - python index.py ./data ./doc index
+    # Example on CSE -  python3 index.py /home/cs6714/Public/data doc_index
 
 
-""" DATA STRUCTURE SCHEMA
-inverted_index = {
-    "apple": {
-        1361: [
-            (37, 2),  # (global_position, line_number)
-            (58, 3)
-        ]
-    },
-    "recipe": {
-        1361: [
-            (39, 2),
-            (80, 5)
-        ]
-    }
-}
-"""
-
-#%%
-# First reach the file and for each word, create a posting list with the document ID that contains the word. 
-filename_path = "/Users/gordonlam/Documents/GitHub/COMP6741/Project/data/5177"
-with open(filename_path, 'r', encoding='utf-8') as file:
-    file_name = int(os.path.basename(filename_path))  # Get the file name without the path
-
-    #process the entire document into one string
-    content = file.read()
-    #tokens = preprocess_and_tokenize(content)
-print(content)       
-# %%
