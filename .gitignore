@@ -1,4 +1,4 @@
-data/
+data/*
 doc_index/
 Archive*/
 Archive*
@@ -8,6 +8,7 @@ index.output
 DS.Store
 *.csv
 *.out
+nltk/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
