@@ -1,4 +1,3 @@
-#%% # Import libraries
 import os
 import re
 import sys
@@ -19,20 +18,15 @@ from nltk.stem import WordNetLemmatizer
 from nltk.corpus import wordnet
 from nltk.stem import PorterStemmer
 
-
 lemmatizer = WordNetLemmatizer()
-#%% # Document processing function
-document_path = os.getcwd() + '/Project/data/'
-index_path = os.getcwd() + '/Project/doc_index/'
+
+# Document processing function
 ###################################### Handle capitalisation and abbreviation ######################################
 #%% 
 def handle_abbreviations(text):
     # Find all tokens in the text that is an abbreviation, then remove the full stop, keep the capitalisation
     text = re.sub(r'\b([A-Za-z])\.', r'\1', text)
     return text
-
-
-###################################### Handle Hyphens ######################################
 
 #%%
 def replace(match):
@@ -53,11 +47,6 @@ def handle_hyphens(text):
     """
     text = text.lower()
     return re.sub(r'\b\w+(?:-\w+)+\b', replace, text)
-
-#s = "D-Kans co-author in-depth set-aside five-year"
-#s = "The cat's ex-wives and cats' toys were playing."
-
-#handle_hyphens(s)  # Example usage
 
 #%%
 ###################################### Normalization functions ######################################
@@ -124,10 +113,6 @@ def normalize_text(text):
     lemmatized_stemmed = ' '.join(lemmatized_stemmed)
     return lemmatized_stemmed
 
-
-#s = "The The US. u.S. US cat's ex-wives and cats' toys were playing."
-#s = handle_hyphens(s)
-#normalize_text(s)
 ###################################### Sentence Index ######################################
 
 #%%
@@ -137,9 +122,6 @@ def split_into_sentences(text):
     print(sentence_endings)
     sentences = sentence_endings.split(text.strip())
     return sentences
-
-#normalized = normalize_text("This is a sentence. Is it? Yes! Let's see if it works. It should work well.")
-#split_into_sentences(normalized)
 
 ###################################### Handle numeric tokens ######################################
 #%%
@@ -157,10 +139,6 @@ def normalize_numeric_tokens(text):
     # 3. (Optional) Remove extra spaces left by removals
     text = re.sub(r'\s+', ' ', text).strip()
     return text
-
-# Example usage:
-#s = "The US. u.S. US population is 1,000,000. The year is 2023. Pi is 3.14. The price is 1,000.50."
-#normalize_numeric_tokens(s)
 
 ###################################### Full Preprocess ######################################
 
@@ -212,8 +190,7 @@ def preprocess_and_tokenize(text):
     text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with a single space
     
     # \b[\w-]+\b matches words that may include hyphens
-    #tokens = re.findall(r'\b[\w-]+\b', text) # Remove punctuations
-    tokens = re.findall(r'\b[\w-]+\b|[.!?]', text) # keep punctuations for now
+    tokens = re.findall(r'\b[\w-]+\b|[.!?]', text) 
     return tokens
     #return text
 
@@ -248,12 +225,6 @@ def handle_paths(document_path, index_path):
     # recreate index_path regardless if the directory exists
     os.makedirs(index_path, exist_ok=True)
 
-#document_path = os.getcwd() + '/Project/data/'
-#index_path = os.getcwd() + '/Project/doc_index/'
-#print(os.getcwd())
-#handle_paths(document_path, index_path)
-#%%
-###
 # Sort the inverted index by docid and position during insertion
 def insert_sorted(list, item):
     """
@@ -261,7 +232,6 @@ def insert_sorted(list, item):
     item: new_posting = new thing to add
     
     """
-
     # Binary search to find the correct insertion point
     index = bisect.bisect_left(list, item)
     list.insert(index, item)
@@ -292,8 +262,6 @@ def create_index(document_path, index_path):
         # First reach the file and for each word, create a posting list with the document ID that contains the word. 
         with open(filename, 'r', encoding='utf-8') as file:
             docid = int(os.path.basename(filename))  # Get the file name without the path
-            
-            # ALTERNATIVELY Process each line individually in the document to store the line and the sentence all at once!
             lines = file.readlines()
             
             #In your index, create a json file for each document where the key is the line number and the value is the string
@@ -301,12 +269,10 @@ def create_index(document_path, index_path):
 
             doc_index = {index:value for index,value in enumerate(lines)}
             with open(indexed_docid_path, 'w', encoding='utf-8') as file:
-                #json.dump(sorted_index, file, ensure_ascii=False, indent=None,)
                 json.dump(doc_index, file, ensure_ascii=False, indent=None, separators=(',', ':'))
             
             #Now Create an inverted index
             sentence_pos=0
-            #line_pos=0
             term_pos=0
 
             # Note the term tag will be a tuple of (sentence_pos, line_pos, term_pos)
@@ -322,7 +288,6 @@ def create_index(document_path, index_path):
                             inverted_index[term] = {docid: [(term_pos, line_pos, sentence_pos)]}
                             term_pos +=1
                         else:
-                            # Do a bisected insert --NOT needed
                             #insert_sorted(inverted_index[term][docid], (term_pos, line_pos, sentence_pos))
                             if docid not in inverted_index[term]:
                                 inverted_index[term][docid] = []
@@ -335,7 +300,6 @@ def create_index(document_path, index_path):
     # Sort the dictionary by the term before dumping to JSON
     sorted_index = {word: inverted_index[word] for word in sorted(inverted_index.keys())}
     with open(output_path, 'w', encoding='utf-8') as file:
-        #json.dump(sorted_index, file, ensure_ascii=False, indent=None, separators=(',', ':'))
         json.dump(sorted_index, file, ensure_ascii=False, indent=None)
 
     # Finally, print the number of documents, tokens, and terms in the index
@@ -362,4 +326,3 @@ if __name__ == "__main__":
     create_index(document_path, output_path)
 
 # run on local: python index.py ./data ./doc_index
-# run on CSE: python3 index.py /home/cs6714/Public/data doc_index
