@@ -1,12 +1,4 @@
-"""
-Implementation of a document indexing system using an inverted index with positional information.
-
-Key requirements
-- Same structure as inverted index in week 1 lecture
-- Follows ALL matching rules 
-"""
-#%%
-# Import libraries
+#%% # Import libraries
 import os
 import re
 import sys
@@ -17,38 +9,28 @@ import json
 import bisect
 from collections import defaultdict
 
-#%%
-
-#python 3.9 ONLY
-
-# Add stop words and lemmatization function
+#%% # Add nltk and lemmatization function
 import nltk
 nltk.download('punkt', quiet=True)
 nltk.download('averaged_perceptron_tagger', quiet=True)
 nltk.download('wordnet', quiet=True)
-
-#%%
-import nltk
 from nltk import word_tokenize, pos_tag
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import wordnet
+from nltk.stem import PorterStemmer
+
 
 lemmatizer = WordNetLemmatizer()
-
-#%%
-
-# Document processing function
+#%% # Document processing function
 document_path = os.getcwd() + '/Project/data/'
 index_path = os.getcwd() + '/Project/doc_index/'
 ###################################### Handle capitalisation and abbreviation ######################################
-#%%
+#%% 
 def handle_abbreviations(text):
     # Find all tokens in the text that is an abbreviation, then remove the full stop, keep the capitalisation
     text = re.sub(r'\b([A-Za-z])\.', r'\1', text)
     return text
 
-#test_string = "The U.S. co-authors' five-year. set-aside BUT. breach was in-depth!"
-#handle_abbreviations(test_string)
 
 ###################################### Handle Hyphens ######################################
 
@@ -59,7 +41,7 @@ def replace(match):
         if len(parts) > 1 and len(parts[0]) < 3:
             return token  # preserve
         else:
-            return ' '.join(parts)  # split
+            return ' '.join(parts)
         
 def handle_hyphens(text):
     """
@@ -103,30 +85,45 @@ def lemmatize_hyphenated(token):
     ]
     return '-'.join(lemmatized_parts)
 
+def stem_hyphenated(token, stemmer=None):
+    """
+    Stems each part of a hyphenated token and rejoins with hyphens.
+    """
+    if stemmer is None:
+        stemmer = PorterStemmer()
+    parts = token.split('-')
+    stemmed_parts = [stemmer.stem(part) for part in parts]
+    return '-'.join(stemmed_parts)
+
 def normalize_text(text):
     """
-    Custom handler for processing text to remove possessives, handle abbreviations, and lemmatize.
+    Custom handler for processing text to remove possessives, handle abbreviations, and lemmatize+stem.
     Inputs
     - text -> string: text string to be normalized entirely
     Outputs
-    - text string with possessives removed, abbreviations handled, and lemmatized
+    - text string with possessives removed, abbreviations handled, lemmatized, and stemmed
     """
     text = text.lower()
-    # Handle possessives like "cat's" → "cat" by matching any alphanumeric character or underscore, ignore punctuation and spacs
+    # Handle possessives like "cat's" → "cat" by matching any alphanumeric character or underscore, ignore punctuation and spaces
     text = re.sub(r"\b(\w+)(?:'s|s')\b", r"\1", text)
     tokens = word_tokenize(text)
     tagged_tokens = pos_tag(tokens)
-    lemmatized = []
+    stemmer = PorterStemmer()
+    lemmatized_stemmed = []
     for token, pos in tagged_tokens:
         if '-' in token:
-            lemmatized.append(lemmatize_hyphenated(token))
+            lemma = lemmatize_hyphenated(token)
+            stemmed = stem_hyphenated(lemma)
         else:
-            lemmatized.append(lemmatizer.lemmatize(token, get_wordnet_pos(pos)))
+            lemma = lemmatizer.lemmatize(token, get_wordnet_pos(pos))
+            stemmed = stemmer.stem(lemma)
+        # Apply stemming after lemmatization
+        lemmatized_stemmed.append(stemmed)
+    # filter empty and stray quotes " ' "
+    lemmatized_stemmed = [tok for tok in lemmatized_stemmed if tok and (tok != "'")]
+    lemmatized_stemmed = ' '.join(lemmatized_stemmed)
+    return lemmatized_stemmed
 
-    #once lemmatised, we can join the tokens back into a single string
-    lemmatized = [tok for tok in lemmatized if tok and (tok != "'")]  # filter empty and stray quotes " ' "
-    lemmatized = ' '.join(lemmatized)
-    return lemmatized
 
 #s = "The The US. u.S. US cat's ex-wives and cats' toys were playing."
 #s = handle_hyphens(s)
@@ -166,7 +163,6 @@ def normalize_numeric_tokens(text):
 #normalize_numeric_tokens(s)
 
 ###################################### Full Preprocess ######################################
-
 
 #%%
 def preprocess_and_tokenize(text):
@@ -210,31 +206,20 @@ def preprocess_and_tokenize(text):
 
     # Handle numeric tokens, commas in tokens, and decimal places
     text = normalize_numeric_tokens(text)
-    #text = text.strip()  # Remove leading and trailing spaces      
-    #print(text)         
-
+    text = text.strip()  # Remove leading and trailing spaces      
+  
     # Tokenize text to words, any punctuation is treated as a token divider
-    #text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with a single space
-
-   # Remove stop words
-    #stop_words = set(stopwords.words('english'))
-    #text = ' '.join([word for word in text.split() if word not in stop_words])
+    text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with a single space
     
     # \b[\w-]+\b matches words that may include hyphens
-    #tokens = re.findall(r'\b[\w-]+\b', text)
-    tokens = re.findall(r'\b[\w-]+\b|[.!?]', text)
+    #tokens = re.findall(r'\b[\w-]+\b', text) # Remove punctuations
+    tokens = re.findall(r'\b[\w-]+\b|[.!?]', text) # keep punctuations for now
     return tokens
     #return text
 
 # string with lots of punctuation and special characters
-s = """The cat's ex-wives and cats' toys were playing.
-The U.S U.s. US population is 1,000,000. The year is 2023. Pi is 3.14. The price is 1,000.50.
-"""
-s = "The cat's ex-wives and!? cats' toys were playing. Apple bottom' , jeans, boots with the fur"
-#print(s)
 #preprocess_and_tokenize(s)
 #%%
-
 def handle_paths(document_path, index_path):
     """
     Handle the paths for document and index.
@@ -316,7 +301,7 @@ def create_index(document_path, index_path):
 
             doc_index = {index:value for index,value in enumerate(lines)}
             with open(indexed_docid_path, 'w', encoding='utf-8') as file:
-                #json.dump(sorted_index, file, ensure_ascii=False, indent=None, separators=(',', ':'))
+                #json.dump(sorted_index, file, ensure_ascii=False, indent=None,)
                 json.dump(doc_index, file, ensure_ascii=False, indent=None, separators=(',', ':'))
             
             #Now Create an inverted index
@@ -354,7 +339,6 @@ def create_index(document_path, index_path):
         json.dump(sorted_index, file, ensure_ascii=False, indent=None)
 
     # Finally, print the number of documents, tokens, and terms in the index
-    #n_doc, n_token, n_terms = process_documents(document_path, output_path)
     n_doc = len(files_to_process)  # Number of documents is the number of files processed
     n_token = total_tokens #sum(len(postings) for postings in inverted_index.values())  # Total
     n_terms = len(inverted_index)  # Number of unique terms in the index
@@ -376,7 +360,6 @@ if __name__ == "__main__":
         output_path = sys.argv[2]
 
     create_index(document_path, output_path)
-    # Example - python index.py ./data ./doc_index
-    # Example on CSE -  python3 index.py /home/cs6714/Public/data doc_index
 
-
+# run on local: python index.py ./data ./doc_index
+# run on CSE: python3 index.py /home/cs6714/Public/data doc_index

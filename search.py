@@ -9,10 +9,10 @@ import nltk
 nltk.download('punkt', quiet=True)
 nltk.download('averaged_perceptron_tagger', quiet=True)
 nltk.download('wordnet', quiet=True)
-
 from nltk import word_tokenize, pos_tag
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import wordnet
+from nltk.stem import PorterStemmer
 
 lemmatizer = WordNetLemmatizer()
 
@@ -75,6 +75,16 @@ def lemmatize_hyphenated(token):
     ]
     return '-'.join(lemmatized_parts)
 
+def stem_hyphenated(token, stemmer=None):
+    """
+    Stems each part of a hyphenated token and rejoins with hyphens.
+    """
+    if stemmer is None:
+        stemmer = PorterStemmer()
+    parts = token.split('-')
+    stemmed_parts = [stemmer.stem(part) for part in parts]
+    return '-'.join(stemmed_parts)
+
 def handle_normalize(text):
     """
     Custom handler for processing text to remove possessives, handle abbreviations, and lemmatize.
@@ -88,16 +98,22 @@ def handle_normalize(text):
     text = re.sub(r"\b(\w+)(?:'s|s')\b", r"\1", text)
     tokens = word_tokenize(text)
     tagged_tokens = pos_tag(tokens)
-    lemmatized = []
+    stemmer = PorterStemmer()
+    lemmatized_stemmed = []
     for token, pos in tagged_tokens:
         if '-' in token:
-            lemmatized.append(lemmatize_hyphenated(token))
+            lemma = lemmatize_hyphenated(token)
+            stemmed = stem_hyphenated(lemma)
         else:
-            lemmatized.append(lemmatizer.lemmatize(token, get_wordnet_pos(pos)))
+            lemma = lemmatizer.lemmatize(token, get_wordnet_pos(pos))
+            stemmed = stemmer.stem(lemma)
+        # Apply stemming after lemmatization
+        lemmatized_stemmed.append(stemmed)
+    # filter empty and stray quotes " ' "
+    lemmatized_stemmed = [tok for tok in lemmatized_stemmed if tok and (tok != "'")]
+    lemmatized_stemmed = ' '.join(lemmatized_stemmed)
+    return lemmatized_stemmed
 
-    lemmatized = [tok for tok in lemmatized if tok and (tok != "'")]  # filter empty and stray quotes " ' "
-    lemmatized = ' '.join(lemmatized)
-    return lemmatized
 
 ###################################### Handle numeric tokens ######################################
 #%%
@@ -116,7 +132,9 @@ def preprocess_and_tokenize(text):
     text = handle_hyphens(text)    # Handle hyphenated terms
     text = handle_normalize(text)    # Handle singular/plural, tense, and possessive forms through stemming/lemmatization and normalisation
     text = normalize_numeric_tokens(text)    # Handle numeric tokens, commas in tokens, and decimal places
-    tokens = re.findall(r'\b[\w-]+\b', text) #Find tokens, any hyphenated terms are kept as is
+    text = text.strip()  # Remove leading and trailing spaces      
+    text = re.sub(r'\s+', ' ', text)  # Tokenize text to words, any punctuation is treated as a token divider
+    tokens = re.findall(r'\b[\w-]+\b', text) #Ignore punctuations here as we dont need to tokenize
     return tokens #list[str]
 
 preprocess_and_tokenize("bank expect distribution")
@@ -162,12 +180,11 @@ def truncate_index(query_terms,inverted_index):
 #sample_index = truncate_index(sample_query_terms,inverted_index)
 #print(sample_index)
 #%%
-
 ###################################### Reversed Index Preprocess ######################################
 
 def reverse_index(inverted_index):
     """
-    This function reverse an inverted index to fulfill the needs of ranked retrieval
+    This function reverse an inverted index to fulfill the needs of ranked retrieval and other requirements
 
     Input:
     - inverted_index -> dict[dict[list[list]]: inverted index of the form {'june': {4988: [[40, 21, 7],....
@@ -199,25 +216,6 @@ def reverse_index(inverted_index):
         reversed_index[docid]["best_indices"] = []
     return reversed_index
 
-   
-
-sample_index = {
-    'june': {
-        '1001': [[3, 1, 1], [15, 2, 2]],
-        '1002': [[7, 1, 1], [22, 3, 3], [35, 4, 4]],
-        '1003': [[5, 2, 1]],
-    },
-    'july': {
-        '1001': [[8, 1, 1], [30, 3, 2]],
-        '1002': [[12, 2, 2]],
-        '1004': [[2, 1, 1], [18, 2, 2]],
-    },
-    'august': {
-        '1001': [[2, 1, 1]],
-        '1002': [[1, 1, 1], [20, 3, 3]],
-        '1003': [[11, 2, 1], [25, 4, 2]],
-    }
-}
 #Sample inverted
 #sample_index = {'june': {'4988': [[40, 21, 7], [54, 27, 9]], '2881': [[12, 8, 3]], '309': [[35, 17, 6]], '2221': [[11, 18, 1]], '56': [[1, 4, 1]], '3535': [[3, 4, 1], [24, 34, 14], [30, 39, 16], [33, 47, 19], [34, 48, 19]], '4297': [[7, 29, 9]], '227': [[0, 2, 0]], '1388': [[6, 9, 2]], '2390': [[7, 11, 4]], '3023': [[12, 33, 11]], '874': [[4, 8, 2]], '4005': [[3, 13, 4], [7, 28, 9], [9, 29, 10], [16, 38, 13], [17, 45, 16]], '5123': [[4, 18, 6]], '4806': [[2, 1, 0]], '3078': [[3, 14, 3]], '2505': [[2, 8, 3]], '5125': [[1, 13, 4]], '4664': [[1, 9, 3]], '1918': [[17, 15, 7]], '2121': [[6, 10, 2], [15, 29, 8]], '1902': [[18, 31, 13]], '2925': [[0, 7, 1], [1, 11, 3], [4, 15, 4], [9, 25, 8]], '3062': [[6, 12, 3], [12, 24, 8]], '4016': [[3, 6, 1]], '1350': [[2, 5, 1], [5, 14, 4]], '3187': [[2, 10, 2]], '144': [[0, 1, 0], [9, 26, 9]], '1': [[16, 28, 10], [23, 33, 13], [35, 45, 17]], '922': [[7, 12, 5]], '5278': [[11, 21, 8]], '5203': [[0, 4, 2]], '903': [[2, 8, 5]], '1634': [[5, 14, 7]], '4714': [[0, 9, 3]], '4233': [[1, 4, 0], [8, 24, 9]], '4267': [[1, 22, 7], [2, 33, 10]], '1575': [[5, 11, 4]], '1312': [[11, 69, 25]], '5779': [[1, 7, 2]], '3278': [[5, 17, 6]], '4098': [[2, 4, 2]], '3068': [[2, 10, 3]], '2718': [[3, 5, 0], [3, 14, 5]], '4689': [[1, 15, 4]], '3493': [[4, 26, 10]], '5167': [[5, 16, 4]], '4425': [[23, 26, 10]], '5765': [[9, 36, 12]], '5273': [[0, 16, 4]], '327': [[15, 16, 5]], '4156': [[1, 7, 1], [7, 39, 11]], '4939': [[0, 10, 2]], '374': [[3, 5, 1]], '5412': [[2, 4, 1]], '3344': [[0, 2, 0], [0, 4, 1]], '5281': [[0, 18, 6]], '2456': [[5, 17, 4]], 'df': 58}}
 #sample_ri = reverse_index(sample_index)
@@ -284,7 +282,7 @@ def calculate_pair_prox(query_terms, reversed_index):
     'scores': [0, 0, 0, 0]},
     """
     # Also store the pairs scores for each document
-    prox_score_data = {}
+    #prox_score_data = {}
 
     # First detect size of query term, the scores won't be updated
     if len(query_terms) == 0:
@@ -303,9 +301,7 @@ def calculate_pair_prox(query_terms, reversed_index):
                 # Add the best first posting directly into the index.. to capture the best term sentence
                 post = term_dict["terms"][relevant_query_terms.pop()][0]
                 reversed_index[docid]["best_indices"].append(post)
-                
-            
-                
+                    
         return reversed_index
 
     
@@ -315,7 +311,6 @@ def calculate_pair_prox(query_terms, reversed_index):
         relevant_query_terms = [term for term in query_terms if term in term_dict["terms"].keys()]
         #print(f"docid:{docid} has relevant terms {relevant_query_terms}")
 
-        #pair_scores = defaultdict(lambda: {"min_dist": 0, "ordered pairs": []})
         # Check again and break for loop if relevant query terms are less than 2. 
         # Skip to next docid
 
@@ -430,8 +425,7 @@ def calculate_pair_prox(query_terms, reversed_index):
         # Store the data in the pair score dictionary
         #prox_score_data[docid] = pair_scores
 
-    return reversed_index 
-#,prox_score_data # once all docIDs have been iterated through
+    return reversed_index  # once all docIDs have been iterated through
 
 #updated_index,cal_data = calculate_pair_prox(['june', 'july','august'], sample_ri)
 #cal_data # Looks good to me
@@ -470,23 +464,16 @@ def find_documents(query, inverted_index):
     query_terms = preprocess_and_tokenize(query)
     if not query_terms:
         return []  # No terms to match
-    #print(f"query terms: {query_terms}")
-    
-    # If all search terms must be present in the document, we start by checking if any of the terms are NOT in the index
-    # if any(term not in inverted_index for term in query_terms):
-    #    return []
     
     # Create a truncated dict of the postings (same as an OR query where every document is included)
     truncated_index = truncate_index(query_terms,inverted_index)
-    #print(truncated_index)
-    # We can now use this to apply our 3 ranking mechanisms
     """
     we now need to build a dictionary to compute 3 scores...
     Algorithm
     1) turn then: For the truncated index into an index + words e.g.
-        doc 1: term_index: [word1:[index1,index2,..],word2:[index1,index2,..]] , score:[0,0,0]
-        doc 2: term_index: [word1:[index1,index2,..],word2:[index1,index2,..]] , score:[0,0,0]
-        doc 3: term_index: [word1:[index1,index2,..],word2:[index1,index2,..]] , score:[0,0,0]
+        doc 1: term_index: [word1:[index1,index2,..],word2:[index1,index2,..]] , score:[0,0,0], best_indices = []
+        doc 2: term_index: [word1:[index1,index2,..],word2:[index1,index2,..]] , score:[0,0,0], best_indices = []
+        doc 3: term_index: [word1:[index1,index2,..],word2:[index1,index2,..]] , score:[0,0,0], best_indices = []
     2) Coverage can be computed by len(value)/len(total query terms) EZEZEZ
     3) Avg_pair_ditance we need to check 
         - if 1 term matched, then avg pair distance = 0 and score is 0 (e.g. if we have only 1 query term then this doesnt matter, but if we have 2 terms, and we get 1 still, it should be ranked and scored lower)
@@ -499,36 +486,27 @@ def find_documents(query, inverted_index):
     4) Reduce your index to now index[docid] = final_score(ndex[docid][score],alpha,beta,gamma)
     5) Use the final score to order your documents
     
-    DONE! lets go...
+    DONE!
     """
 
     # Step 1. Reverse the index
     reversed_index = reverse_index(truncated_index)
-    #print(reversed_index)
 
     # Step 2 Compute metrics and populate scores
     reversed_index = calculate_coverage(query_terms, reversed_index)
-    #print(reversed_index)
     
     # Step 3 Calculate Proximity Score
-    #reversed_index, pair_data = calculate_pair_prox(query_terms, reversed_index) 
     reversed_index = calculate_pair_prox(query_terms, reversed_index) 
-
-    #for key in reversed_index.keys():
-    #    print(f"KEY {key}: {reversed_index[key]['scores']}")
 
     # Step 4 Calculate Final Score
     alpha,beta,gamma = 1,1,0.1
     reversed_index = compute_final_score(alpha,beta,gamma,reversed_index)
     
     # Step 5, Provide a sorted output...
-    return reversed_index#, pair_data
+    return reversed_index
 
 #scored_index = find_documents("bags and sales", inverted_index)  # Use a set to avoid duplicates
 #print(f"Matched documents: {sorted(matched_docs)}")
-#%%
-#scored_index
-
 #%%
 def rank_retrieve(scored_index, index_path, show_line):
 
@@ -555,9 +533,7 @@ def rank_retrieve(scored_index, index_path, show_line):
             with open(file_path, "r", encoding="utf-8") as f:
                 doc_json = json.load(f)
 
-            #print(file_path)
             #Now we need to open up the document and print the lines
-    
             print(f"> {docid}")
             for line in lines:
                 print(doc_json[line], end='')
@@ -604,5 +580,5 @@ if __name__ == "__main__":
         except (EOFError, KeyboardInterrupt):
             break
     
-#run: python search.py doc_index
-# on CSE: python3 search.py doc_index
+# run on local: python search.py doc_index
+# run on CSE: python3 search.py doc_index
