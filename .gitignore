@@ -5,7 +5,7 @@ Archive*
 sanity
 output.csv
 index.output
-.DS_Store
+DS.Store
 *.csv
 *.out
 
