@@ -5,7 +5,9 @@ Archive*
 sanity
 output.csv
 index.output
-
+.DS_Store
+*.csv
+*.out
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
