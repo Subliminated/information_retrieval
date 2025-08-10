@@ -63,6 +63,48 @@ pip install nltk
 The first run will automatically download required NLTK data packages.
 
 ## Notes
-- The indexer uses lemmatization and stemming to normalize terms, so different forms of a word (e.g., "distribution", "distribute", "distributing") are indexed as the same token.
 - The search program supports ranked retrieval, coverage, and proximity scoring.
 - For more details, see the comments and instructions at the bottom of `index.py` and `search.py`.
+
+## Testing
+
+To test that the indexer and search system are working correctly:
+
+1. **Prepare Test Data**
+   - Place a few small, plain text files in the `./data` directory. Each file should contain some sample text. For example:
+     - `data/1`:
+       ```
+       Apple and orange are fruits.
+       Distribution of apples is important.
+       ```
+     - `data/2`:
+       ```
+       Oranges are distributed worldwide.
+       Expected results are shown below.
+       ```
+
+2. **Rebuild the Index**
+   - Run:
+     ```sh
+     python index.py ./data ./doc_index
+     ```
+   - This will generate a new `inverted_index.json` and per-document line files in `./doc_index`.
+
+3. **Run the Search Program**
+   - Start the search interface:
+     ```sh
+     python search.py ./doc_index
+     ```
+   - Enter queries such as:
+     - `apple`
+     - `distribution`
+     - `> orange distribution`
+   - The program should return document IDs and, if using `> `, the matching lines from the documents.
+
+4. **Check Output**
+   - Verify that the search results match the expected documents and lines, and that different forms of words (e.g., "distribution", "distribute", "distributing") are treated as the same token.
+
+5. **Troubleshooting**
+   - If you encounter errors, check that your data files are plain text and that you have installed all dependencies (see above).
+
+For more advanced testing, you can add more documents and queries, or inspect the generated `inverted_index.json` for correctness.
